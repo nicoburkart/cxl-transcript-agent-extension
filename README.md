@@ -95,7 +95,6 @@ const NOTION_CONFIG = {
 
 ### Security Notes
 
-- The `background.js` file is gitignored to prevent exposing your Notion credentials
 - Keep your Notion API key and database ID secure
 - Never commit sensitive credentials to version control
 
