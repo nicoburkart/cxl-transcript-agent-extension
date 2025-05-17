@@ -1,2 +1,6 @@
-manifest.json
+# Node modules
+node_modules/
+
+# Environment variables
 .env
+manifest.json

@@ -1,4 +1,11 @@
 // Background script for CXL Transcript Auto-Opener
+
+// Notion API Configuration
+const NOTION_CONFIG = {
+  NOTION_API_KEY: "your-notion-api-key",
+  NOTION_DATABASE_ID: "your-notin-db-id",
+};
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log("CXL Transcript Auto-Opener installed");
 });
@@ -11,15 +18,64 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       request.url
     );
     fetchTranscriptContent(request.url)
-      .then((content) => {
+      .then(async (content) => {
         console.log(
           "Background script: Successfully fetched and processed content"
         );
-        sendResponse({ success: true, content });
+        try {
+          const result = await sendToNotion(content);
+          // Send status message to content script
+          chrome.tabs.sendMessage(sender.tab.id, {
+            action: "notionStatus",
+            status: result.status === "skipped" ? "skipped" : "success",
+            message:
+              result.status === "skipped"
+                ? "Transcript already exists in Notion"
+                : "Transcript saved to Notion",
+          });
+          sendResponse({ success: true, content });
+        } catch (error) {
+          console.error("Background script: Error sending to Notion:", error);
+          // Send error message to content script
+          chrome.tabs.sendMessage(sender.tab.id, {
+            action: "notionStatus",
+            status: "error",
+            message: "Failed to save transcript to Notion",
+          });
+          sendResponse({ success: false, error: error.message });
+        }
       })
       .catch((error) => {
         console.error("Background script: Error fetching transcript:", error);
         sendResponse({ success: false, error: error.message });
+      });
+    return true; // Required for async sendResponse
+  } else if (request.action === "checkTranscriptSaved") {
+    // Extract document ID from URL
+    const docId = getDocIdFromUrl(request.url);
+    if (!docId) {
+      sendResponse({ saved: false });
+      return;
+    }
+
+    // Fetch document content to get title
+    fetchTranscriptContent(request.url)
+      .then(async (content) => {
+        try {
+          // Check if transcript exists in Notion
+          const exists = await checkExistingTranscript(
+            content.lesson,
+            content.course
+          );
+          sendResponse({ saved: exists });
+        } catch (error) {
+          console.error("Error checking transcript status:", error);
+          sendResponse({ saved: false });
+        }
+      })
+      .catch((error) => {
+        console.error("Error fetching transcript:", error);
+        sendResponse({ saved: false });
       });
     return true; // Required for async sendResponse
   }
@@ -129,4 +185,135 @@ function processDocumentContent(doc) {
 
   console.log("Background script: Processed content structure:", result);
   return result;
+}
+
+// Function to check if a transcript already exists in Notion
+async function checkExistingTranscript(lesson, course) {
+  console.log("Background script: Checking for existing transcript...");
+
+  const response = await fetch(
+    `https://api.notion.com/v1/databases/${NOTION_CONFIG.NOTION_DATABASE_ID}/query`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${NOTION_CONFIG.NOTION_API_KEY}`,
+        "Content-Type": "application/json",
+        "Notion-Version": "2022-06-28",
+      },
+      body: JSON.stringify({
+        filter: {
+          and: [
+            {
+              property: "Name",
+              title: {
+                equals: lesson,
+              },
+            },
+            {
+              property: "Course",
+              select: {
+                equals: course,
+              },
+            },
+          ],
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    console.error(
+      "Background script: Error checking existing transcript:",
+      errorData
+    );
+    throw new Error(
+      `Failed to check existing transcript: ${response.status} ${response.statusText}`
+    );
+  }
+
+  const data = await response.json();
+  return data.results.length > 0;
+}
+
+// Function to send content to Notion
+async function sendToNotion(content) {
+  console.log("Background script: Sending content to Notion...");
+
+  if (!NOTION_CONFIG.NOTION_API_KEY || !NOTION_CONFIG.NOTION_DATABASE_ID) {
+    throw new Error(
+      "Notion credentials not configured. Please check the NOTION_CONFIG object in background.js"
+    );
+  }
+
+  // Check if transcript already exists
+  const exists = await checkExistingTranscript(content.lesson, content.course);
+  if (exists) {
+    console.log(
+      "Background script: Transcript already exists in Notion, skipping..."
+    );
+    return { status: "skipped", reason: "Transcript already exists" };
+  }
+
+  const requestBody = {
+    parent: { database_id: NOTION_CONFIG.NOTION_DATABASE_ID },
+    properties: {
+      Name: {
+        title: [
+          {
+            text: {
+              content: content.lesson || "Untitled",
+            },
+          },
+        ],
+      },
+      Course: {
+        select: {
+          name: content.course || "Uncategorized",
+        },
+      },
+    },
+    children: content.content.map((paragraph) => ({
+      object: "block",
+      type: "paragraph",
+      paragraph: {
+        rich_text: [
+          {
+            type: "text",
+            text: {
+              content: paragraph,
+            },
+          },
+        ],
+      },
+    })),
+  };
+
+  console.log(
+    "Background script: Sending request to Notion:",
+    JSON.stringify(requestBody, null, 2)
+  );
+
+  const response = await fetch(`https://api.notion.com/v1/pages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${NOTION_CONFIG.NOTION_API_KEY}`,
+      "Content-Type": "application/json",
+      "Notion-Version": "2022-06-28",
+    },
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    console.error("Background script: Notion API error details:", errorData);
+    throw new Error(
+      `Failed to send to Notion: ${response.status} ${response.statusText}${
+        errorData ? ` - ${JSON.stringify(errorData)}` : ""
+      }`
+    );
+  }
+
+  console.log("Background script: Successfully sent content to Notion");
+  return await response.json();
 }
