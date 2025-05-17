@@ -77,9 +77,8 @@ const NOTION_CONFIG = {
 ## Usage
 
 1. Navigate to any CXL course page
-2. The extension will automatically detect transcript links
-3. Click on a "Lesson Transcript" link
-4. The extension will:
+2. The extension will automatically:
+   - Detect transcript links
    - Download the transcript
    - Save it to your Notion database
    - Show a green checkmark next to downloaded transcripts
@@ -119,14 +118,6 @@ const NOTION_CONFIG = {
    - Make sure you're logged into Google
    - Verify the OAuth client ID is correct
    - Check that the extension has the correct permissions
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
 
 ## License
 
