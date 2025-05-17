@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "CXL Transcript Auto-Opener",
+  "version": "1.0",
+  "description": "Automatically opens transcript links on app.cxl.com",
+  "permissions": ["tabs", "scripting", "identity"],
+  "host_permissions": [
+    "https://app.cxl.com/*",
+    "https://docs.google.com/*",
+    "https://www.googleapis.com/*"
+  ],
+  "oauth2": {
+    "client_id": "YOUR_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/documents.readonly"]
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://app.cxl.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_title": "CXL Transcript Auto-Opener"
+  }
+}
